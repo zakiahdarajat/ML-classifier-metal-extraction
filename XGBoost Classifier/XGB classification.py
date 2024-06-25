@@ -2,16 +2,7 @@
 """
 Authors:
 
-    (1) Adroit T.N. Fajar, Ph.D.
-        JSPS Postdoctoral Fellow | 日本学術振興会外国人特別研究員
-        Department of Applied Chemistry, Graduate School of Engineering, Kyushu University
-        744 Motooka, Nishi-ku, Fukuoka 819-0395, Japan
-        Email: fajar.toriq.nur.adroit.009@m.kyushu-u.ac.jp / adroit.fajar@gmail.com
-        Scopus Author ID: 57192386143
-        Google Scholar: https://scholar.google.com/citations?user=o6jQEEMAAAAJ&hl=en&oi=ao
-        ResearchGate: https://www.researchgate.net/profile/Adroit-Fajar
-        
-    (3) Zakiah Darajat Nurfajrin
+Zakiah Darajat Nurfajrin
         Doctoral Student
         Department of Applied Chemistry, Graduate School of Engineering, Kyushu University
         744 Motooka, Nishi-ku, Fukuoka 819-0395, Japan
@@ -42,7 +33,7 @@ import matplotlib.ticker as mticker
 
 
 # Load and define dataframe for the learning dataset
-Learning = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/XGB/descriptor for conventional metal extractant.csv")
+Learning = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/UPLOAD TO GIT/XGB/descriptor for conventional metal extractant.csv")
 
 print('\t')
 print('Learning dataset (original): \n')
@@ -226,6 +217,57 @@ ycoord = ax.yaxis.get_major_ticks()
 dpi_assign = 300
 plt.savefig('fig2a.jpg', dpi=dpi_assign, bbox_inches='tight')
 
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.preprocessing import StandardScaler, label_binarize
+from sklearn.pipeline import make_pipeline
+from sklearn.svm import LinearSVC
+from sklearn.metrics import average_precision_score, precision_recall_curve
+import numpy as np
+
+# Use label_binarize to convert the multiclass target variable to binary
+y_test_bin = label_binarize(y_test, classes=[0, 1, 2, 3])  
+
+# Define the classifier using OneVsRestClassifier
+classifier = make_pipeline(StandardScaler(), OneVsRestClassifier(LinearSVC(random_state=10)))
+
+# Fit the classifier
+classifier.fit(X_train, y_train)
+
+# Compute decision function for each class
+y_score = classifier.decision_function(X_test)
+
+# Determine the number of unique classes in the target variable
+n_classes = len(np.unique(y_train))
+
+# Compute precision-recall curve and average precision for each class
+precision = dict()
+recall = dict()
+average_precision = dict()
+for i in range(n_classes):
+    precision[i], recall[i], _ = precision_recall_curve(y_test_bin[:, i], y_score[:, i])
+    average_precision[i] = average_precision_score(y_test_bin[:, i], y_score[:, i])
+
+# Define colors for each class
+colors = ['orange', 'green', 'red', 'purple']
+
+# Plot the precision-recall curve for each class
+plt.figure(figsize=(8, 6))
+for i, color in zip(range(n_classes), colors):
+    plt.plot(recall[i], precision[i], color=color, lw=2,
+             label=f'Precision-recall for class {i} (AP={average_precision[i]:0.2f})')
+
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+# plt.title('Precision-Recall curve for each class')
+plt.legend(loc="best")
+
+plt.savefig('RF - precision-recall curve for each class.png', dpi=1300)
+plt.show()
+
+
+##======================================================================================================##
 ### Load descriptors for actual predictions
 descriptors = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/XGB/DATA TEST_DES.csv") # This contains descriptors (features) for 150 chemicals
 
