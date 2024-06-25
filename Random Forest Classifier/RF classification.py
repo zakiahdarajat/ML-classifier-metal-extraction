@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """
+
 Authors:
 
 Zakiah Darajat Nurfajrin
@@ -18,22 +19,21 @@ Data abbreviations:
 
 """
 
-# Load the packages
-import numpy as np
+
+### Configure the number of available CPU
+import os as os
+cpu_number = os.cpu_count()
+n_jobs = cpu_number - 2
+
+### Import some standard libraries
 import pandas as pd
 import seaborn as sns
-from xgboost import XGBClassifier
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
-from sklearn.metrics import accuracy_score
-import xgboost as xgb
+# import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-import matplotlib.ticker as mticker
+pd.options.mode.chained_assignment = None
 
-
-
-# Load and define dataframe for the learning dataset
-Learning = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/UPLOAD TO GIT/XGB/descriptor for conventional metal extractant.csv")
+### Load and define dataframe for the learning dataset
+Learning = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/UPLOAD TO GIT/RF/descriptor for conventional metal extractant.csv") 
 
 print('\t')
 print('Learning dataset (original): \n')
@@ -41,95 +41,114 @@ print(f'Filetype: {type(Learning)}, Shape: {Learning.shape}')
 print(Learning)
 print(Learning.describe())
 
-# Convert non-numeric data to numeric
-Learning.loc[Learning.metal == 'Ni', 'metal'] = 0
-Learning.loc[Learning.metal == 'Co', 'metal'] = 1
-Learning.loc[Learning.metal == 'Li', 'metal'] = 2
-Learning.loc[Learning.metal == 'Mn', 'metal'] = 3
+### Convert non-numeric data to numeric
+
+Learning.metal[Learning.metal == 'Ni'] = 1
+Learning.metal[Learning.metal == 'Co'] = 2
+Learning.metal[Learning.metal == 'Li'] = 3
+Learning.metal[Learning.metal == 'Mn'] = 4
+
 
 print('\n')
 print('Learning dataset (converted): \n')
 print(f'Filetype: {type(Learning)}, Shape: {Learning.shape}')
 print(Learning)
 
-# Define X and y out of the learning data (X: features, y: label)
+# Define X and Y out of the learning data (X: features, Y: label)
 X = Learning.drop('metal', axis=1)
-y = Learning['metal'].values
-y = y.astype('int')
+Y = Learning['metal'].values
+Y = Y.astype('int')
 
-# Split into training and test datasets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=5)
 
-# Define the parameter space for hyperparameters
+### Split the learning data into training set and test set
+from sklearn.model_selection import train_test_split
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=10)
+
+cross_val = 10
+
+### Train and evaluate the model
+from sklearn.ensemble import RandomForestClassifier
+RFclf = RandomForestClassifier(random_state=10)
+from sklearn.model_selection import cross_val_score
+scores = cross_val_score(RFclf, X_train, Y_train, scoring="accuracy", cv=cross_val) 
+
+def display_score(scores):
+    print('\n')
+    print('Preliminary run: \n')
+    print("Scores:", scores)
+    print("Mean:", scores.mean())
+    print("Standard deviation:", scores.std())
+display_score(scores)
+
+### Fine tune the model using RandomSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 param_space = {
-    'learning_rate': [0.001, 0.1, 0.2],
-    'n_estimators': [100, 200, 300],
-    'max_depth': [3, 4, 5],
-    'min_child_weight': [1, 2, 3],
-    'gamma': [0, 0.1, 0.2],
-    'subsample': [0.8, 0.9, 1.0],
-    'colsample_bytree': [0.8, 0.9, 1.0],
-    'lambda': [0, 1, 10]
+    'n_estimators': [100, 200, 300, 400, 500],
+    'max_depth': [100, 200, 300, 400, 500],
+    'max_features': [2, 4, 6, 8, 10, 12]
 }
-
-# Fit the model
-model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
-model.fit(X_train, y_train)
-
-# XGBoost (different learning rate)
-learning_rate_range = np.arange(0.01, 1, 0.5)
-test_XG = [] 
-train_XG = []
-for lr in learning_rate_range:
-    xgb_classifier = xgb.XGBClassifier(eta = lr)
-    xgb_classifier.fit(X_train, y_train)
-    train_XG.append(xgb_classifier.score(X_train, y_train))
-    test_XG.append(xgb_classifier.score(X_test, y_test))
-
-# Generate predictions
-y_pred = model.predict(X_test)
-
-# Evaluate model performance
-accuracy = accuracy_score(y_test, y_pred)
-print(f'Accuracy: {accuracy:.2f}')
-
-#XGBoost performs
-fig = plt.figure(figsize=(10, 7))
-plt.plot(learning_rate_range, train_XG, c='orange', label='Train')
-plt.plot(learning_rate_range, test_XG, c='m', label='Test')
-plt.xlabel('Learning rate')
-plt.xticks(learning_rate_range)
-plt.ylabel('Accuracy score')
-plt.ylim(0.6, 1)
-plt.legend(prop={'size': 12}, loc=3)
-plt.title('Accuracy score vs. Learning rate of XGBoost', size=14)
-plt.show()
-
-# Create an instance of RandomizedSearchCV
 random_search = RandomizedSearchCV(
-    xgb_classifier,
+    RFclf,
     param_distributions=param_space,
-    n_iter=50,  # Number of random combinations to try
-    scoring='accuracy',
-    cv=5,  # Number of cross-validation folds
-    n_jobs=-1,  # Number of parallel jobs (use -1 to utilize all available cores)
-    random_state=5
+    n_iter=10,  # Number of iterations for random sampling
+    scoring="accuracy",
+    cv=cross_val,
+    n_jobs=n_jobs
 )
+random_search.fit(X_train, Y_train)
 
-# Fit the RandomizedSearchCV instance on training data
-random_search.fit(X_train, y_train)
-
-# Access the best hyperparameters
 best_params = random_search.best_params_
 print("Best Hyperparameters:", best_params)
 
-# Evaluate the model using the best hyperparameters
-best_model = random_search.best_estimator_
-accuracy_train = best_model.score(X_train, y_train)
-accuracy_test = best_model.score(X_test, y_test)
-print("Training Accuracy:", accuracy_train)
-print("Test Accuracy:", accuracy_test)
+cvres = random_search.cv_results_
 
+print('\n')
+print('Hyperparameter tuning: \n')
+for mean_score, params in zip(cvres["mean_test_score"], cvres["params"]):
+    print(mean_score, params)
+
+best_estimator = random_search.best_estimator_
+
+# Extract relevant information from cvres and best model
+mean_test_scores = cvres['mean_test_score']
+best_test_score = random_search.best_score_
+param_combinations = [str(param) for param in random_search.cv_results_['params']]
+
+# Set custom color palette
+custom_palette = sns.color_palette("Set2")
+
+# Plot results for different hyperparameter settings
+plt.figure(figsize=(10, 6))
+
+# Customize line plot
+sns.lineplot(x=param_combinations, y=mean_test_scores, marker='o', label='Cross-Validation', color=custom_palette[0])
+plt.axhline(y=best_test_score, color=custom_palette[1], linestyle='--', label='Best Test Score')
+
+# Customize labels and title
+plt.xlabel('Hyperparameter Combination')
+plt.ylabel('Mean Test Score')
+plt.title('Cross-Validation Results vs. Best Test Score')
+
+# Customize legend
+plt.legend()
+
+# Customize x-axis ticks
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+
+# Set grid lines
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# Save the plot with high DPI
+plt.savefig('customized_plot.png', dpi=300)
+
+# Show the plot
+plt.show()
+
+
+### Re-train the model with the best hyperparameters and the whole training set
+RFclf_opt = random_search.best_estimator_
+model = RFclf_opt.fit(X_train, Y_train)
 
 ### Analyze and visualize the optimized model performance on TRAINING SET using CROSS-VALIDATION
 from sklearn.metrics import accuracy_score
@@ -138,39 +157,79 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import cross_val_predict
 
-# Cross-Validation Evaluation on Training Set
-cv_pred = cross_val_predict(best_model, X_train, y_train, cv=5)
+cv_pred = cross_val_predict(RFclf_opt, X_train, Y_train, cv=cross_val)
+
+print('\n')
+print('Quality assessment with cross-validation (employ model with the best hyperparameters): \n')
+print('Accuracy score: ', accuracy_score(Y_train, cv_pred)) ## ini nilai yang paling penting (> 0.7)
+print('Classification report: \n', classification_report(Y_train, cv_pred))
+print('Confusion matrix: \n', confusion_matrix(Y_train, cv_pred))
 
 
-print('Quality assessment with cross-validation:')
-print('Accuracy score:', accuracy_score(y_train, cv_pred))
-print('Classification report:\n', classification_report(y_train, cv_pred))
-print('Confusion matrix:\n', confusion_matrix(y_train, cv_pred))
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Extract relevant information from cvres and best model
+mean_test_scores = cvres['mean_test_score']
+best_test_score = random_search.best_score_
+
+# Set custom color palette
+custom_palette = sns.color_palette("Set2")
+
+# Plot results for different hyperparameter settings
+plt.figure(figsize=(10, 6))
+
+# Customize line plot
+sns.lineplot(x=range(len(mean_test_scores)), y=mean_test_scores, marker='o', label='Cross-Validation', color=custom_palette[0])
+plt.axhline(y=best_test_score, color=custom_palette[1], linestyle='--', label='Best Test Score')
+
+# Customize labels and title
+plt.xlabel('Hyperparameter Combination')
+plt.ylabel('Mean Test Score')
+plt.title('Cross-Validation Results vs. Best Test Score')
+
+# Customize legend
+plt.legend()
+
+# Customize x-axis ticks
+plt.xticks(range(len(mean_test_scores)), [str(param) for param in random_search.cv_results_['params']], rotation=45, ha='right')
+plt.tight_layout()
+
+# Set grid lines
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# Save the plot with high DPI
+plt.savefig('customized_plot.png', dpi=300)
+
+# Show the plot
+plt.show()
 
 
-
-# Plot Confusion Matrix using ConfusionMatrixDisplay
+### Plot using ConfusionMatrixDisplay
+import matplotlib.font_manager as fm
 fonts = fm.FontProperties(family='arial', size=20, weight='normal', style='normal')
-categories = ['Ni', 'Mn', 'Co', 'Li']
-cm_cv = confusion_matrix(y_train, cv_pred, labels=model.classes_)
+categories = 'Ni', 'Co', 'Mn', 'Li'
+cm_cv = confusion_matrix(Y_train, cv_pred, labels=RFclf_opt.classes_)
 disp_cv = ConfusionMatrixDisplay(confusion_matrix=cm_cv, display_labels=categories)
-fig, ax = plt.subplots(figsize=(5, 5))
+fig = plt.figure(figsize=(5, 5))
+ax = fig.add_subplot(111)
 disp_cv.plot(ax=ax, cmap='Blues')
-plt.xlabel('Predicted Label', labelpad=10, fontproperties=fm.FontProperties(family='arial', size=20, weight='normal', style='normal'))
-plt.ylabel('True Label', labelpad=10, fontproperties=fm.FontProperties(family='arial', size=20, weight='normal', style='normal'))
+plt.xlabel('Predicted Label', labelpad=10, fontproperties=fonts)
+plt.ylabel('True Label', labelpad=10, fontproperties=fonts)
 dpi_assign = 300
 plt.savefig('fig1a.jpg', dpi=dpi_assign, bbox_inches='tight')
+
 #### Analyze and visualize the optimized model performance on TRAINING SET via a SINGLE RUN
 train_pred = model.predict(X_train)
 
 print('\n')
 print('Learning results for training set (employ model with the best hyperparameters): \n')
-print('Accuracy score: ', accuracy_score(y_train, train_pred))
-print('Classification report: \n', classification_report(y_train, train_pred))
-print('Confusion matrix: \n', confusion_matrix(y_train, train_pred))
+print('Accuracy score: ', accuracy_score(Y_train, train_pred))
+print('Classification report: \n', classification_report(Y_train, train_pred))
+print('Confusion matrix: \n', confusion_matrix(Y_train, train_pred))
 
 ### Plot using ConfusionMatrixDisplay
-cm_train = confusion_matrix(y_train, train_pred, labels=model.classes_)
+cm_train = confusion_matrix(Y_train, train_pred, labels=RFclf_opt.classes_)
 disp_train = ConfusionMatrixDisplay(confusion_matrix=cm_train, display_labels=categories)
 fig = plt.figure(figsize=(5, 5))
 ax = fig.add_subplot(111)
@@ -185,12 +244,12 @@ test_pred = model.predict(X_test)
 
 print('\n')
 print('Learning results for test set (employ model with the best hyperparameters): \n')
-print('Accuracy score: ', accuracy_score(y_test, test_pred))
-print('Classification report: \n', classification_report(y_test, test_pred))
-print('Confusion matrix: \n', confusion_matrix(y_test, test_pred))
+print('Accuracy score: ', accuracy_score(Y_test, test_pred)) 
+print('Classification report: \n', classification_report(Y_test, test_pred))
+print('Confusion matrix: \n', confusion_matrix(Y_test, test_pred))
 
 ### Plot using ConfusionMatrixDisplay
-cm_test = confusion_matrix(y_test, test_pred, labels=model.classes_)
+cm_test = confusion_matrix(Y_test, test_pred, labels=RFclf_opt.classes_)
 disp_test = ConfusionMatrixDisplay(confusion_matrix=cm_test, display_labels=categories)
 fig = plt.figure(figsize=(5, 5))
 ax = fig.add_subplot(111)
@@ -200,22 +259,28 @@ plt.ylabel('True Label', labelpad=10, fontproperties=fonts)
 dpi_assign = 300
 plt.savefig('fig1b.jpg', dpi=dpi_assign, bbox_inches='tight')
 
-# Visualize Feature Importances
+# Fit the model with the best hyperparameters
+RFclf_opt = random_search.best_estimator_
+model = RFclf_opt.fit(X_train, Y_train)
+
+# Extract and visualize feature importances
 feature_importances = pd.DataFrame({'features': X_train.columns, 'importance': model.feature_importances_})
-fig = plt.figure(figsize=(12,5))
+feature_importances = feature_importances.sort_values(by='importance', ascending=False)
+
+# Print feature importances
+print('\nFeature Importances:\n')
+print(feature_importances)
+
+# Visualize feature importances
+plt.figure(figsize=(12, 5))
 ax = sns.barplot(x='features', y='importance', data=feature_importances, palette='vlag')
-plt.xlabel('Feature', labelpad=20, fontproperties=fm.FontProperties(family='arial', size=10, weight='normal', style='normal'))
-plt.ylabel('Importance', labelpad=20, fontproperties=fm.FontProperties(family='arial', size=10, weight='normal', style='normal'))
-ticker_arg = [0.025, 0.05, 0.025, 0.05]
-tickers = [mticker.MultipleLocator(ticker_arg[i]) for i in range(len(ticker_arg))]
-ax.yaxis.set_minor_locator(tickers[0])
-ax.yaxis.set_major_locator(tickers[1])
-xcoord = ax.xaxis.get_major_ticks()
-ycoord = ax.yaxis.get_major_ticks()
-[(i.label.set_fontproperties('arial'), i.label.set_fontsize(10)) for i in xcoord]
-[(j.label.set_fontproperties('arial'), j.label.set_fontsize(10)) for j in ycoord]
-dpi_assign = 300
-plt.savefig('fig2a.jpg', dpi=dpi_assign, bbox_inches='tight')
+plt.xlabel('Feature', labelpad=10, fontproperties=fonts)
+plt.ylabel('Importance', labelpad=10, fontproperties=fonts)
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.savefig('feature_importance_random_forest.png', dpi=300)
+plt.show()
+
 
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import StandardScaler, label_binarize
@@ -225,27 +290,27 @@ from sklearn.metrics import average_precision_score, precision_recall_curve
 import numpy as np
 
 # Use label_binarize to convert the multiclass target variable to binary
-y_test_bin = label_binarize(y_test, classes=[0, 1, 2, 3])  
+Y_test_bin = label_binarize(Y_test, classes=[0, 1, 2, 3])  
 
 # Define the classifier using OneVsRestClassifier
 classifier = make_pipeline(StandardScaler(), OneVsRestClassifier(LinearSVC(random_state=10)))
 
 # Fit the classifier
-classifier.fit(X_train, y_train)
+classifier.fit(X_train, Y_train)
 
 # Compute decision function for each class
 y_score = classifier.decision_function(X_test)
 
 # Determine the number of unique classes in the target variable
-n_classes = len(np.unique(y_train))
+n_classes = len(np.unique(Y_train))
 
 # Compute precision-recall curve and average precision for each class
 precision = dict()
 recall = dict()
 average_precision = dict()
 for i in range(n_classes):
-    precision[i], recall[i], _ = precision_recall_curve(y_test_bin[:, i], y_score[:, i])
-    average_precision[i] = average_precision_score(y_test_bin[:, i], y_score[:, i])
+    precision[i], recall[i], _ = precision_recall_curve(Y_test_bin[:, i], y_score[:, i])
+    average_precision[i] = average_precision_score(Y_test_bin[:, i], y_score[:, i])
 
 # Define colors for each class
 colors = ['orange', 'green', 'red', 'purple']
@@ -267,9 +332,10 @@ plt.savefig('RF - precision-recall curve for each class.png', dpi=1300)
 plt.show()
 
 
-##======================================================================================================##
+#============================================================================================#
+
 ### Load descriptors for actual predictions
-descriptors = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/XGB/DATA TEST_DES.csv") # This contains descriptors (features) for 150 chemicals
+descriptors = pd.read_csv("C:/Users/GKlab/Documents/PENELITIAN ZAKIAH/1st PAPER/ML/RF/DATA TEST_DES.csv") 
 
 print('\n')
 print('Descriptor data: ')
@@ -285,10 +351,10 @@ print('Prediction of descriptor data: ')
 print(label_pred)
 
 Prediction = pd.DataFrame(label_pred, columns = ['Selectivity']) # Covert numpy to pandas
-Prediction.Selectivity[Prediction.Selectivity == 0] = 'Ni'
-Prediction.Selectivity[Prediction.Selectivity == 1] = 'Co'
-Prediction.Selectivity[Prediction.Selectivity == 2] = 'Li'
-Prediction.Selectivity[Prediction.Selectivity == 3] = 'Mn'
+Prediction.Selectivity[Prediction.Selectivity == 1] = 'Ni'
+Prediction.Selectivity[Prediction.Selectivity == 2] = 'Co'
+Prediction.Selectivity[Prediction.Selectivity == 3] = 'Li'
+Prediction.Selectivity[Prediction.Selectivity == 4] = 'Mn'
 
 print('\n')
 print('Prediction of descriptor data (converted): ')
